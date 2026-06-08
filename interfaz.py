@@ -20,7 +20,6 @@ def mostrar_en_visor(texto):
     txt_resultados.config(state="disabled")
 
 def renderizar_lista(lista, tipo="Documentos"):
-    """Formatea listas de diccionarios (Eventos o Invitados) para que se lean bien."""
     if not lista:
         mostrar_en_visor(f"No se encontraron {tipo} con los criterios ingresados.")
         return
@@ -108,14 +107,16 @@ def cmd_mostrar_todo():
 def cmd_agregar_invitado():
     codigo = ent_cud_codigo.get().strip()
     rut = ent_cud_rut.get().strip()
+    nombre = ent_cud_nombre.get().strip()
+    correo = ent_cud_correo.get().strip()
     estado = cmb_cud_estado.get().strip()
     
-    if not codigo or not rut:
-        messagebox.showwarning("Atención", "Debe ingresar Código de Evento y RUT.")
+    if not codigo or not rut or not nombre or not correo:
+        messagebox.showwarning("Atención", "Debe ingresar Código de evento, nombre, correo y RUT.")
         return
         
-    if crud.agregar_invitado_a_evento(codigo, rut, estado):
-        messagebox.showinfo("Éxito", f"RUT {rut} agregado al evento {codigo}.")
+    if crud.agregar_invitado_a_evento(codigo, rut, nombre, correo, estado):
+        messagebox.showinfo("Éxito", f"campo agregado al evento {codigo}.")
         # Autoejecutamos el lookup para ver el cambio en pantalla
         ent_lookup_codigo.delete(0, tk.END)
         ent_lookup_codigo.insert(0, codigo)
@@ -126,14 +127,16 @@ def cmd_agregar_invitado():
 def cmd_actualizar_estado():
     codigo = ent_cud_codigo.get().strip()
     rut = ent_cud_rut.get().strip()
+    nombre = ent_cud_nombre.get().strip()
+    correo = ent_cud_correo.get().strip()
     estado = cmb_cud_estado.get().strip()
     
-    if not codigo or not rut:
-        messagebox.showwarning("Atención", "Debe ingresar Código de Evento y RUT.")
+    if not codigo or not correo:
+        messagebox.showwarning("Atención", "Debe ingresar Código de Evento y Correo.")
         return
         
-    if crud.actualizar_estado_invitado(codigo, rut, estado):
-        messagebox.showinfo("Éxito", f"Estado de {rut} actualizado a '{estado}'.")
+    if crud.actualizar_estado_invitado(codigo, rut, nombre, correo, estado):
+        messagebox.showinfo("Éxito", f"Estado de {correo} actualizado a '{estado}'.")
         ent_lookup_codigo.delete(0, tk.END)
         ent_lookup_codigo.insert(0, codigo)
         cmd_ejecutar_lookup()
@@ -142,20 +145,39 @@ def cmd_actualizar_estado():
 
 def cmd_eliminar_invitado():
     codigo = ent_cud_codigo.get().strip()
-    rut = ent_cud_rut.get().strip()
+    correo = ent_cud_correo.get().strip()
     
-    if not codigo or not rut:
-        messagebox.showwarning("Atención", "Debe ingresar Código de Evento y RUT.")
+    if not codigo or not correo:
+        messagebox.showwarning("Atención", "Debe ingresar Código de Evento y Correo.")
         return
         
-    if messagebox.askyesno("Confirmar", f"¿Sacar al RUT {rut} del evento {codigo}?"):
-        if crud.eliminar_invitado_de_evento(codigo, rut):
+    if messagebox.askyesno("Confirmar", f"¿Sacar al Correo {correo} del Evento {codigo}?"):
+        if crud.eliminar_invitado_de_evento(codigo, correo):
             messagebox.showinfo("Éxito", "Invitado eliminado del arreglo.")
             ent_lookup_codigo.delete(0, tk.END)
             ent_lookup_codigo.insert(0, codigo)
             cmd_ejecutar_lookup()
         else:
             messagebox.showerror("Error", "No se pudo eliminar.")
+
+
+def cmd_listar_eventos_basico():
+    resultados = crud.listar_eventos_basico()
+    renderizar_lista(resultados, "Eventos (Vista Resumida)")
+
+def cmd_top_3_eventos():
+    resultados = crud.top_3_eventos_confirmados()
+    if not resultados:
+        mostrar_en_visor("📭 No hay suficientes datos o confirmados para el Top 3.")
+        return
+        
+    texto = "🏆 TOP 3 EVENTOS CON MÁS CONFIRMADOS 🏆\n"
+    texto += "=" * 40 + "\n"
+    for i, evt in enumerate(resultados, 1):
+        texto += f"#{i} - {evt['_id']} (Cod: {evt['codigo']})\n"
+        texto += f"   Total Confirmados: {evt['total_confirmados']} personas\n"
+        texto += "-" * 40 + "\n"
+    mostrar_en_visor(texto)
 
 # ==========================================
 # CONFIGURACIÓN DE LA VENTANA (FRONTEND)
@@ -164,10 +186,19 @@ window = tk.Tk()
 window.title("Panel de Control - MongoDB Advance")
 window.geometry("600x750")
 
+frame_rubrica = tk.LabelFrame(window, text=" Reportes Generales ", padx=10, pady=5)
+frame_rubrica.pack(padx=20, pady=5, fill="x")
+
+tk.Button(frame_rubrica, text="📋 Listar Todos los Eventos (Resumen)", command=cmd_listar_eventos_basico, bg="#607D8B", fg="white").pack(side="left", padx=10, fill="x", expand=True)
+tk.Button(frame_rubrica, text="🏆 Ver Top 3 Eventos (Confirmados)", command=cmd_top_3_eventos, bg="#FF9800", fg="white", font=("Helvetica", 9, "bold")).pack(side="left", padx=10, fill="x", expand=True)
+
+frame_regex = tk.LabelFrame(window, text=" 1. Búsquedas Simples ", padx=10, pady=10)
+frame_regex.pack(padx=20, pady=5, fill="x")
+
+
 # --- FRAME 1: EXPRESIONES REGULARES ---
 frame_regex = tk.LabelFrame(window, text=" 1. Búsquedas Simples (Expresiones Regulares - $regex) ", padx=10, pady=10)
 frame_regex.pack(padx=20, pady=5, fill="x")
-tk.Button(frame_regex, text="📋 Listar Todos los Eventos", command=cmd_mostrar_todo, bg="#607D8B", fg="white").grid(row=2, column=0, columnspan=3, sticky="ew", pady=10)
 
 tk.Label(frame_regex, text="Buscar Invitado (Nombre/Correo):").grid(row=0, column=0, sticky="w", pady=2)
 ent_regex_invitado = tk.Entry(frame_regex, width=25)
@@ -189,7 +220,7 @@ ent_sub_rut.grid(row=0, column=1, padx=5)
 tk.Button(frame_sub, text="Buscar", command=cmd_buscar_por_rut, bg="#2196F3", fg="white").grid(row=0, column=2, sticky="ew")
 
 tk.Label(frame_sub, text="Eventos con invitados en estado:").grid(row=1, column=0, sticky="w", pady=2)
-cmb_estado = ttk.Combobox(frame_sub, values=["pendiente", "confirmado", "rechazado"], width=22)
+cmb_estado = ttk.Combobox(frame_sub, values=["pendiente", "confirmado", "rechazado"], width=22, state="readonly")
 cmb_estado.current(0)
 cmb_estado.grid(row=1, column=1, padx=5)
 tk.Button(frame_sub, text="Buscar", command=cmd_buscar_por_estado, bg="#2196F3", fg="white").grid(row=1, column=2, sticky="ew")
@@ -206,22 +237,33 @@ tk.Button(frame_lookup, text="Ejecutar Cruce", command=cmd_ejecutar_lookup, bg="
 frame_cud = tk.LabelFrame(window, text=" 4. Gestión de Invitados en Eventos (Insertar, Actualizar, Eliminar) ", padx=10, pady=10)
 frame_cud.pack(padx=20, pady=5, fill="x")
 
-tk.Label(frame_cud, text="Cod. Evento:").grid(row=0, column=0, sticky="w", pady=2)
+
+# FILA 1: Identificación
+tk.Label(frame_cud, text="Cod. Evento:").grid(row=0, column=0, sticky="w", pady=5)
 ent_cud_codigo = tk.Entry(frame_cud, width=15)
-ent_cud_codigo.grid(row=0, column=1, padx=2)
+ent_cud_codigo.grid(row=0, column=1, padx=5)
 
-tk.Label(frame_cud, text="RUT Invitado:").grid(row=0, column=2, sticky="w", pady=2, padx=5)
+tk.Label(frame_cud, text="RUT Invitado:").grid(row=0, column=2, sticky="w", pady=5, padx=(15, 5))
 ent_cud_rut = tk.Entry(frame_cud, width=15)
-ent_cud_rut.grid(row=0, column=3, padx=2)
+ent_cud_rut.grid(row=0, column=3, padx=5)
 
-tk.Label(frame_cud, text="Estado:").grid(row=0, column=4, sticky="w", pady=2, padx=5)
-cmb_cud_estado = ttk.Combobox(frame_cud, values=["pendiente", "confirmado", "rechazado"], width=10)
-cmb_cud_estado.current(1) # Por defecto "confirmado"
-cmb_cud_estado.grid(row=0, column=5, padx=2)
+# FILA 2: Detalles del Invitado
+tk.Label(frame_cud, text="Nombre:").grid(row=1, column=0, sticky="w", pady=5)
+ent_cud_nombre = tk.Entry(frame_cud, width=15)
+ent_cud_nombre.grid(row=1, column=1, padx=5)
 
+tk.Label(frame_cud, text="Correo:").grid(row=1, column=2, sticky="w", pady=5, padx=(15, 5))
+ent_cud_correo = tk.Entry(frame_cud, width=15)
+ent_cud_correo.grid(row=1, column=3, padx=5)
+
+# FILA 3: Estado
+tk.Label(frame_cud, text="Estado:").grid(row=0, column=4, sticky="w", pady=5, padx=(15, 5))
+cmb_cud_estado = ttk.Combobox(frame_cud, values=["pendiente", "confirmado", "rechazado"], width=12, state="readonly")
+cmb_cud_estado.current(1)
+cmb_cud_estado.grid(row=0, column=5, padx=5)
 # Fila de botones CUD
 frame_botones_cud = tk.Frame(frame_cud)
-frame_botones_cud.grid(row=1, column=0, columnspan=6, pady=10)
+frame_botones_cud.grid(row=2, column=0, columnspan=6, pady=15)
 
 tk.Button(frame_botones_cud, text="➕ Agregar ($push)", command=cmd_agregar_invitado, bg="#4CAF50", fg="white").pack(side="left", padx=5)
 tk.Button(frame_botones_cud, text="🔄 Actualizar ($set)", command=cmd_actualizar_estado, bg="#2196F3", fg="white").pack(side="left", padx=5)
@@ -237,7 +279,7 @@ scroll_y.pack(side="right", fill="y")
 txt_resultados = tk.Text(frame_resultados, yscrollcommand=scroll_y.set, font=('Consolas', 10), bg="#2b2b2b", fg="#a9b7c6")
 txt_resultados.pack(fill="both", expand=True)
 scroll_y.config(command=txt_resultados.yview)
-txt_resultados.config(state="disabled") # Bloqueado para que el usuario no escriba dentro
+txt_resultados.config(state="disabled")
 
 # Ajuste de columnas para que los botones se vean alineados
 for frame in [frame_regex, frame_sub, frame_lookup]:

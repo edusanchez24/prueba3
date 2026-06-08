@@ -1,6 +1,5 @@
 from conexion import obtener_db
 
-# Obtenemos la instancia de la base de datos
 db = obtener_db()
 
 # ==========================================
@@ -10,7 +9,6 @@ db = obtener_db()
 def buscar_invitados_por_texto(texto_buscado):
     if db is None: return []
     try:
-        # Usamos $or para aplicar el regex a múltiples campos a la vez
         filtro = {
             "$or": [
                 {"nombre": {"$regex": texto_buscado, "$options": "i"}},
@@ -68,17 +66,13 @@ def obtener_detalles_evento_con_invitados(codigo_evento):
             {"$unwind": "$invitados"},
             {
                 "$lookup": {
-                    "from": "invitados",           # Colección con la que vamos a cruzar
-                    "localField": "invitados.rut", # El campo RUT dentro del evento
-                    "foreignField": "rut",         # El campo RUT en la colección invitados
-                    "as": "datos_invitado"         # Nombre de la nueva lista donde se guardará el cruce
+                    "from": "invitados",           
+                    "localField": "invitados.rut",
+                    "foreignField": "rut", 
+                    "as": "datos_invitado"         
                 }
             },
-            
-            # Etapa 4: $unwind - El $lookup devuelve una lista, la desarmamos para sacar el objeto
             {"$unwind": "$datos_invitado"},
-            
-            # Etapa 5: $group - Volvemos a agrupar todo en la estructura original del evento
             {
                 "$group": {
                     "_id": "$_id",
@@ -120,7 +114,6 @@ def obtener_detalles_evento_con_invitados(codigo_evento):
 
 
 def crear_evento(codigo, nombre, fecha, lugar, categoria):
-    """C: CREATE - Inserta un nuevo documento en la colección 'eventos'"""
     if db is None: return False
     try:
         nuevo_evento = {
@@ -134,17 +127,16 @@ def crear_evento(codigo, nombre, fecha, lugar, categoria):
         resultado = db.eventos.insert_one(nuevo_evento)
         return resultado.inserted_id is not None
     except Exception as e:
-        print(f"❌ Error al crear evento: {e}")
+        print(f"Error al crear evento: {e}")
         return False
 
-def agregar_invitado_a_evento(codigo_evento, rut_invitado, estado):
-    """
-    U: UPDATE ($push) - Agrega un nuevo subdocumento a la lista 'invitados' de un evento.
-    """
+def agregar_invitado_a_evento(codigo_evento, rut_invitado, nombre, correo, estado):
     if db is None: return False
     try:
         nuevo_invitado = {
             "rut": rut_invitado,
+            "nombre": nombre,
+            "correo": correo,
             "estado": estado,
             "checkin": False
         }
@@ -154,7 +146,7 @@ def agregar_invitado_a_evento(codigo_evento, rut_invitado, estado):
         )
         return resultado.modified_count > 0
     except Exception as e:
-        print(f"❌ Error al agregar invitado: {e}")
+        print(f"Error al agregar invitado: {e}")
         return False
 
 
@@ -162,37 +154,33 @@ def agregar_invitado_a_evento(codigo_evento, rut_invitado, estado):
 # ==========================================
 # 4. LEER (Mostrar los datos)
 # ==========================================
-
-def obtener_todos_los_eventos():
-    """R: READ - Trae todos los documentos de la colección 'eventos'."""
+def listar_eventos_basico():
     if db is None: return []
     try:
-        # Convertimos el cursor a lista
-        return list(db.eventos.find())
+        proyeccion = {"_id": 0, "codigo": 1, "nombre": 1, "fecha": 1, "lugar": 1, "categoria": 1}
+        return list(db.eventos.find({}, proyeccion))
     except Exception as e:
-        print(f"❌ Error al obtener todos los eventos: {e}")
+        print(f"Error al listar eventos: {e}")
         return []
 
 # ==========================================
 # 5. ACTUALIZAR (UPDATE / Operador Posicional $)
-# ==========================================
 
-def actualizar_estado_invitado(codigo_evento, rut_invitado, nuevo_estado):
-    """
-    U: UPDATE con $ - Busca un evento y un RUT específico dentro del arreglo, 
-    y actualiza solo el estado de ESE invitado usando el operador posicional ($).
-    """
+# ==========================================
+def actualizar_estado_invitado(codigo_evento, rut_invitado, nuevo_nombre, nuevo_correo, nuevo_estado):
     if db is None: return False
     try:
         resultado = db.eventos.update_one(
-            # Filtramos el evento y el invitado específico
             {"codigo": codigo_evento, "invitados.rut": rut_invitado},
-            # El símbolo $ representa el índice exacto donde se encontró el RUT
-            {"$set": {"invitados.$.estado": nuevo_estado}} 
+            {"$set": {
+                "invitados.$.nombre": nuevo_nombre,
+                "invitados.$.correo": nuevo_correo,
+                "invitados.$.estado": nuevo_estado
+            }} 
         )
         return resultado.modified_count > 0
     except Exception as e:
-        print(f"❌ Error al actualizar estado: {e}")
+        print(f"Error al actualizar invitado: {e}")
         return False
 
 
@@ -201,9 +189,6 @@ def actualizar_estado_invitado(codigo_evento, rut_invitado, nuevo_estado):
 # ==========================================
 
 def eliminar_invitado_de_evento(codigo_evento, rut_invitado):
-    """
-    D: DELETE en arreglo ($pull) - Remueve un subdocumento específico de la lista.
-    """
     if db is None: return False
     try:
         resultado = db.eventos.update_one(
@@ -212,16 +197,34 @@ def eliminar_invitado_de_evento(codigo_evento, rut_invitado):
         )
         return resultado.modified_count > 0
     except Exception as e:
-        print(f"❌ Error al eliminar invitado: {e}")
+        print(f"Error al eliminar invitado: {e}")
         return False
 
 def eliminar_evento_completo(codigo_evento):
-    """D: DELETE - Elimina un documento completo de la colección."""
     if db is None: return False
     try:
         resultado = db.eventos.delete_one({"codigo": codigo_evento})
         return resultado.deleted_count > 0
     except Exception as e:
-        print(f"❌ Error al eliminar evento: {e}")
+        print(f"Error al eliminar evento: {e}")
         return False
 
+
+def top_3_eventos_confirmados():
+    if db is None: return []
+    try:
+        pipeline = [
+            {"$unwind": "$invitados"},
+            {"$match": {"invitados.estado": "confirmado"}},
+            {"$group": {
+                "_id": "$nombre",
+                "codigo": {"$first": "$codigo"},
+                "total_confirmados": {"$sum": 1}
+            }},
+            {"$sort": {"total_confirmados": -1}},
+            {"$limit": 3}
+        ]
+        return list(db.eventos.aggregate(pipeline))
+    except Exception as e:
+        print(f"Error en Top 3: {e}")
+        return []
